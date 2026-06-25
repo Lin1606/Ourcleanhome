@@ -127,6 +127,7 @@
   .wempty{font-size:13px; color:var(--faint); text-align:center; padding:14px 0;}
   .overdue-tag{background:#f4e3df; color:#a86b5c; padding:1px 8px; border-radius:999px; font-weight:600;}
   .task.is-overdue .tname{color:#a86b5c;}
+  .room-label{display:inline-block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--hearth-tx); background:var(--hearth-bg); padding:2px 7px; border-radius:6px; margin-right:7px; vertical-align:1px;}
 
   .toast{position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:11px 18px; border-radius:999px; font-size:14px; z-index:80; opacity:0; transition:.2s; pointer-events:none;}
   .toast.show{opacity:1;}
@@ -194,7 +195,7 @@
 
   <div class="nav">
     <button data-screen="today" class="active"><span class="ic">◉</span>Today</button>
-    <button data-screen="all"><span class="ic">≣</span>All</button>
+    <button data-screen="all"><span class="ic">≣</span>To do</button>
     <button data-screen="calendar"><span class="ic">▦</span>Calendar</button>
   </div>
   <button class="fab" id="fab">+</button>
@@ -204,6 +205,7 @@
 <div class="scrim" id="taskScrim"><div class="sheet">
   <h2>New task</h2>
   <div class="field"><label>Task name</label><input id="f_name" placeholder="e.g. Clean toilet" autocomplete="off"></div>
+  <div class="field"><label>Group</label><select id="f_group"></select></div>
   <div class="field"><label>Room</label><select id="f_room"></select></div>
   <div class="field"><label>Who does it</label><select id="f_person"></select></div>
   <div class="field"><label>Time of day</label>
@@ -223,6 +225,10 @@
     <div class="row2">
       <input id="f_everyVal" type="number" min="1" max="60" value="2">
       <select id="f_everyUnit"><option value="day">days</option><option value="week">weeks</option><option value="month">months</option></select>
+    </div>
+    <div id="everyWeekdayWrap" class="hidden" style="margin-top:10px;">
+      <label>On which day</label>
+      <select id="f_everyWeekday"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option></select>
     </div>
     <p style="font-size:12px;color:var(--muted);margin:6px 0 0;">Counts from today.</p>
   </div>
@@ -257,6 +263,12 @@
     <div class="row2" style="margin-top:8px;">
       <input id="newRoom" placeholder="Add a room" autocomplete="off">
       <button class="iconbtn" id="addRoom" style="flex:0 0 auto;">Add</button>
+    </div>
+  </div>
+  <div class="field"><label>Groups (e.g. “Friday cleaning”)</label><div id="groupList"></div>
+    <div class="row2" style="margin-top:8px;">
+      <input id="newGroup" placeholder="Add a group" autocomplete="off">
+      <button class="iconbtn" id="addGroup" style="flex:0 0 auto;">Add</button>
     </div>
   </div>
   <button class="btn-ghost" id="signOutBtn" style="color:var(--ember);">Sign out</button>
@@ -329,7 +341,8 @@ $('createHomeBtn').onclick = async ()=>{
     name:hn, code, createdAt:serverTimestamp(),
     memberUids:[user.uid],
     members:[{uid:user.uid, name, color:COLORS[0]}],
-    rooms:[{id:'r1',name:'Kitchen'},{id:'r2',name:'Bathroom'},{id:'r3',name:'Bedroom'},{id:'r4',name:'Living room'}]
+    rooms:[{id:'r1',name:'Kitchen'},{id:'r2',name:'Bathroom'},{id:'r3',name:'Bedroom'},{id:'r4',name:'Living room'}],
+    groups:[]
   });
   enterHome(ref.id);
 };
@@ -378,7 +391,17 @@ function scheduledOn(t,d){
     const a0=new Date(anchor.getFullYear(),anchor.getMonth(),anchor.getDate());
     if(d0<a0) return false;
     if(unit==='day'){ const diff=Math.round((d0-a0)/86400000); return diff%n===0; }
-    if(unit==='week'){ const diff=Math.round((d0-a0)/86400000); return diff%(n*7)===0; }
+    if(unit==='week'){
+      // if a weekday is chosen, the task lands on that weekday every n weeks; else on the anchor's weekday
+      const targetDow = (t.everyWeekday!=null && t.everyWeekday!=='') ? Number(t.everyWeekday) : anchor.getDay();
+      if(d.getDay()!==targetDow) return false;
+      // count weeks from the first occurrence of targetDow on/after anchor
+      const first=new Date(a0); while(first.getDay()!==targetDow) first.setDate(first.getDate()+1);
+      const f0=new Date(first.getFullYear(),first.getMonth(),first.getDate());
+      if(d0<f0) return false;
+      const diff=Math.round((d0-f0)/86400000);
+      return diff%(n*7)===0;
+    }
     if(unit==='month'){
       if(d.getDate()!==anchor.getDate()) return false;
       const mdiff=(d.getFullYear()-anchor.getFullYear())*12+(d.getMonth()-anchor.getMonth());
@@ -399,21 +422,42 @@ function nextScheduledAfter(t,d){ for(let i=1;i<=400;i++){ const x=addDays(d,i);
 function doneKeysFor(t){ return new Set(Object.keys(t.done||{}).map(k=>k.split('|')[1]).filter(Boolean)); }
 function skipKeysFor(t){ return new Set(Object.keys(t.skip||{}).map(k=>k.split('|')[1]).filter(Boolean)); }
 
-/* should task show on date d? with done + overdue flags. implements carry-over. */
+/* should task show on date d? carry-over only applies up to TODAY; future days show only the natural schedule. */
 function showState(t,d){
+  const todayY=ymd(new Date());
+  const dY=ymd(d);
+  const isFutureOrToday = dY>=todayY;
+  const isToday = dY===todayY;
   const last=lastScheduledOnOrBefore(t,d);
   if(!last) return {show:false};
+  // never treat instances before the task's anchor (creation) as due
+  if(t.anchor && ymd(last)<t.anchor) {
+    // only show if d itself is a real scheduled day on/after anchor
+    if(scheduledOn(t,d) && dY>=t.anchor) return {show:true,done:false,overdue:false,key:t.id+'|'+dY,overdueDays:0};
+    return {show:false};
+  }
   const next=nextScheduledAfter(t,last);
   const inWindow=(k)=> k>=ymd(last) && (!next || k<ymd(next));
   const dk=doneKeysFor(t); const sk=skipKeysFor(t);
-  for(const k of dk){ if(inWindow(k)) return { show:sameYMD(d,last), done:true, overdue:false, key:t.id+'|'+ymd(last) }; }
+  for(const k of dk){ if(inWindow(k)) return { show:sameYMD(d,last), done:true, overdue:false, key:t.id+'|'+ymd(last), overdueDays:0 }; }
   for(const k of sk){ if(inWindow(k)) return { show:false, skipped:true, key:t.id+'|'+ymd(last) }; }
-  return { show:true, done:false, overdue:!sameYMD(d,last), key:t.id+'|'+ymd(last) };
+  // not done, not skipped
+  const overdueDays = Math.round((new Date(dY)-new Date(ymd(last)))/86400000);
+  const isScheduledToday = sameYMD(d,last);
+  if(isScheduledToday){
+    // exact scheduled day: always show, not overdue
+    return { show:true, done:false, overdue:false, key:t.id+'|'+ymd(last), overdueDays:0 };
+  }
+  // d is AFTER the scheduled day (carry-over). Only carry up to today; never into future calendar days.
+  if(dY>todayY) return {show:false};
+  return { show:true, done:false, overdue:true, key:t.id+'|'+ymd(last), overdueDays };
 }
 /* back-compat: simple occurs check (used by calendar month counts = native schedule) */
 function occursOn(t,d){ return scheduledOn(t,d); }
 function members(){ return home?home.members:[]; }
 function rooms(){ return home?home.rooms:[]; }
+function groups(){ return home?(home.groups||[]):[]; }
+function groupName(id){ const g=groups().find(x=>x.id===id); return g?g.name:''; }
 function memberByUid(uid){ return members().find(m=>m.uid===uid); }
 function roomName(id){ const r=rooms().find(x=>x.id===id); return r?r.name:''; }
 function ownerOn(t,d){
@@ -454,29 +498,36 @@ function listForDate(d){
   return out;
 }
 function freqLabel(t){
+  const W=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const Ws=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   if(t.freq==='daily') return 'daily';
-  if(t.freq==='everyN'){ const n=Number(t.everyVal)||1; const u=t.everyUnit; return n===1?('every '+u):('every '+n+' '+u+'s'); }
-  if(t.freq==='weekdays'){ const W=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; return (t.weekdays||[]).map(x=>W[x]).join('/'); }
-  if(t.freq==='weekly') return 'weekly';
-  if(t.freq==='monthly') return 'monthly';
-  if(t.freq==='yearly') return 'yearly';
+  if(t.freq==='everyN'){ const n=Number(t.everyVal)||1; const u=t.everyUnit;
+    let base = n===1?('every '+u):('every '+n+' '+u+'s');
+    if(u==='week' && t.everyWeekday!=null && t.everyWeekday!=='') base += ' · '+Ws[Number(t.everyWeekday)];
+    return base;
+  }
+  if(t.freq==='weekdays'){ return (t.weekdays||[]).map(x=>Ws[x]).join('/'); }
+  if(t.freq==='weekly') return 'weekly · '+Ws[Number(t.weekday)];
+  if(t.freq==='monthly') return 'monthly · day '+t.monthday;
+  if(t.freq==='yearly'){ const M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return 'yearly · '+M[Number(t.yrmonth)-1]+' '+t.yrday; }
   return t.freq;
 }
 function taskRow(t,d,key,hideCheck){
   const st=t.__s||showState(t,d);
   const realKey=st.key||key;
   const ownerId=ownerOn(t,d); const owner=memberByUid(ownerId);
-  const done=!!st.done; const overdue=!!st.overdue;
+  const done=!!st.done; const overdue=!!st.overdue; const odd=st.overdueDays||0;
   const todTxt=t.tod==='any'?'':({morning:'Morning',afternoon:'Afternoon',evening:'Evening'}[t.tod]);
   const ownerTag = t.person==='anyone'
     ? '<span class="tag">Anyone</span>'
     : (owner?'<span class="tag"><span class="owner-dot" style="background:'+owner.color+'"></span>'+esc(owner.name)+'</span>':'');
-  const overdueTag = overdue?'<span class="tag overdue-tag">overdue</span>':'';
+  const odLabel = odd>0 ? ('overdue '+odd+(odd===1?' day':' days')) : 'overdue';
+  const overdueTag = overdue?'<span class="tag overdue-tag">'+odLabel+'</span>':'';
+  const roomLbl = roomName(t.room) ? '<span class="room-label">'+esc(roomName(t.room))+'</span>' : '';
   const face='<div class="task '+(done?'done':'')+(overdue?' is-overdue':'')+'">'+
     (hideCheck?'<div style="width:23px"></div>':'<div class="check '+(done?'on':'')+'" data-tid="'+t.id+'" data-key="'+realKey+'">'+(done?'✓':'')+'</div>')+
-    '<div class="body"><div class="tname">'+esc(t.name)+'</div><div class="meta">'+
+    '<div class="body"><div class="tname">'+roomLbl+esc(t.name)+'</div><div class="meta">'+
       overdueTag+
-      (roomName(t.room)?'<span class="tag">'+esc(roomName(t.room))+'</span>':'')+
       (todTxt?'<span class="tag">'+todTxt+'</span>':'')+'<span class="tag">'+esc(freqLabel(t))+'</span>'+
       ownerTag+
     '</div></div><span class="grip" aria-hidden="true">⋯</span></div>';
@@ -508,14 +559,30 @@ function renderToday(){
   c.innerHTML=h; bind();
 }
 function renderAll(){
-  $('screenTitle').textContent='All tasks';
-  const c=$('content'); let ts=tasks.slice();
-  if(activePerson!=='all') ts=ts.filter(t=>t.person===activePerson||t.rotate||t.person==='anyone');
-  if(!ts.length){ c.innerHTML='<div class="empty">No tasks yet. Tap + to add one.</div>'; return; }
-  const byRoom={}; ts.forEach(t=>(byRoom[t.room]=byRoom[t.room]||[]).push(t));
-  let h=''; Object.keys(byRoom).forEach(rid=>{
-    h+='<div class="card"><div class="card-h"><span class="lbl">'+esc(roomName(rid)||'No room')+'</span></div>';
-    byRoom[rid].forEach(t=>h+=taskRow(t,new Date(),'',true)); h+='</div>'; });
+  $('screenTitle').textContent='To do';
+  const c=$('content'); const today=new Date();
+  // only tasks that need doing now: showing today, not done, (due or overdue)
+  let items=[];
+  tasks.forEach(t=>{
+    const s=showState(t,today);
+    if(!s.show || s.done) return;
+    if(activePerson!=='all' && !(ownerOn(t,today)===activePerson || t.person==='anyone')) return;
+    t.__s=s; items.push(t);
+  });
+  if(!items.length){ c.innerHTML='<div class="empty">Nothing to do right now. 🌿<br>Enjoy the quiet.</div>'; return; }
+  // group by group name (tasks with no group go under "Other")
+  const byGroup={};
+  items.forEach(t=>{ const k=t.group||'__none__'; (byGroup[k]=byGroup[k]||[]).push(t); });
+  // order: real groups first (in home.groups order), then Other
+  const order=[...groups().map(g=>g.id), '__none__'];
+  let h='';
+  order.forEach(gid=>{
+    const list=byGroup[gid]; if(!list||!list.length) return;
+    const title = gid==='__none__' ? 'Other' : groupName(gid);
+    h+='<div class="card"><div class="card-h"><span class="lbl">'+esc(title)+'</span></div>';
+    list.forEach(t=>h+=taskRow(t,today,t.__s.key,false));
+    h+='</div>';
+  });
   c.innerHTML=h; bind();
 }
 function renderCalendar(){
@@ -627,19 +694,19 @@ let fTod='any', fFreq='daily', editingId=null;
 function fill(id,opts){ $(id).innerHTML=opts.map(o=>'<option value="'+o.v+'">'+esc(o.t)+'</option>').join(''); }
 function segSet(id,v){ document.querySelectorAll('#'+id+' button').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); }
 function resetForm(){
-  fill('f_room', rooms().map(r=>({v:r.id,t:r.name})));
+  fill('f_group', [{v:'',t:'No group'}, ...groups().map(g=>({v:g.id,t:g.name}))]);
+  fill('f_room', [{v:'',t:'No room'}, ...rooms().map(r=>({v:r.id,t:r.name}))]);
   fill('f_person', [{v:'anyone',t:'Anyone'}, ...members().map(m=>({v:m.uid,t:m.name}))]);
   document.querySelectorAll('#f_weekdays button.on').forEach(b=>b.classList.remove('on'));
 }
 $('fab').onclick=()=>{
   editingId=null;
-  $('taskSheetTitle') && ($('taskSheetTitle').textContent='New task');
   document.querySelector('#taskScrim h2').textContent='New task';
   $('saveTask').textContent='Save task';
   resetForm();
   $('f_name').value='';
   fTod='any'; fFreq='daily'; segSet('f_tod','any'); segSet('f_freq','daily'); $('f_rotate').checked=false;
-  $('f_everyVal').value=2; $('f_everyUnit').value='day';
+  $('f_everyVal').value=2; $('f_everyUnit').value='day'; $('f_everyWeekday').value='5';
   $('f_weekday').value='1'; $('f_monthday').value='1'; $('f_yrmonth').value='1'; $('f_yrday').value='1';
   freqWraps();
   $('taskScrim').classList.add('show');
@@ -651,10 +718,10 @@ function openEdit(id){
   $('saveTask').textContent='Save changes';
   resetForm();
   $('f_name').value=t.name||'';
-  $('f_room').value=t.room||''; $('f_person').value=t.person||'anyone';
+  $('f_group').value=t.group||''; $('f_room').value=t.room||''; $('f_person').value=t.person||'anyone';
   fTod=t.tod||'any'; segSet('f_tod',fTod);
   fFreq=t.freq||'daily'; segSet('f_freq',fFreq);
-  $('f_everyVal').value=t.everyVal||2; $('f_everyUnit').value=t.everyUnit||'day';
+  $('f_everyVal').value=t.everyVal||2; $('f_everyUnit').value=t.everyUnit||'day'; $('f_everyWeekday').value=(t.everyWeekday!=null&&t.everyWeekday!=='')?t.everyWeekday:'5';
   (t.weekdays||[]).forEach(d=>{ const b=document.querySelector('#f_weekdays button[data-d="'+d+'"]'); if(b)b.classList.add('on'); });
   $('f_weekday').value=t.weekday||'1'; $('f_monthday').value=t.monthday||'1';
   $('f_yrmonth').value=t.yrmonth||'1'; $('f_yrday').value=t.yrday||'1';
@@ -665,8 +732,10 @@ function openEdit(id){
 document.querySelectorAll('#f_tod button').forEach(b=>b.onclick=()=>{fTod=b.dataset.v;segSet('f_tod',fTod);});
 document.querySelectorAll('#f_freq button').forEach(b=>b.onclick=()=>{fFreq=b.dataset.v;segSet('f_freq',fFreq);freqWraps();});
 document.querySelectorAll('#f_weekdays button').forEach(b=>b.onclick=()=>b.classList.toggle('on'));
+$('f_everyUnit').onchange=()=>{ $('everyWeekdayWrap').classList.toggle('hidden', $('f_everyUnit').value!=='week'); };
 function freqWraps(){
   $('everyNWrap').classList.toggle('hidden',fFreq!=='everyN');
+  $('everyWeekdayWrap').classList.toggle('hidden', !(fFreq==='everyN' && $('f_everyUnit').value==='week'));
   $('weekdaysWrap').classList.toggle('hidden',fFreq!=='weekdays');
   $('weeklyWrap').classList.toggle('hidden',fFreq!=='weekly');
   $('monthlyWrap').classList.toggle('hidden',fFreq!=='monthly');
@@ -680,8 +749,8 @@ $('saveTask').onclick=async()=>{
     if(!weekdays.length){ toast('Pick at least one day'); return; }
   }
   const data={
-    name, room:$('f_room').value, person:$('f_person').value, tod:fTod, freq:fFreq,
-    everyVal:$('f_everyVal').value, everyUnit:$('f_everyUnit').value,
+    name, group:$('f_group').value, room:$('f_room').value, person:$('f_person').value, tod:fTod, freq:fFreq,
+    everyVal:$('f_everyVal').value, everyUnit:$('f_everyUnit').value, everyWeekday:$('f_everyWeekday').value,
     weekdays,
     weekday:$('f_weekday').value, monthday:$('f_monthday').value, yrmonth:$('f_yrmonth').value, yrday:$('f_yrday').value,
     rotate:$('f_rotate').checked
@@ -707,8 +776,12 @@ function renderSetup(){
   $('inviteCode').textContent=home.code;
   $('peopleList').innerHTML=members().map(m=>'<div style="display:flex;align-items:center;gap:9px;padding:7px 0;"><span class="dot" style="background:'+m.color+'"></span><span style="flex:1;">'+esc(m.name)+(m.uid===user.uid?' (you)':'')+'</span></div>').join('');
   $('roomList').innerHTML=rooms().map(r=>'<div style="display:flex;align-items:center;gap:9px;padding:7px 0;"><span style="flex:1;">'+esc(r.name)+'</span><button class="delete" data-delr="'+r.id+'">×</button></div>').join('');
+  $('groupList').innerHTML=groups().map(g=>'<div style="display:flex;align-items:center;gap:9px;padding:7px 0;"><span style="flex:1;">'+esc(g.name)+'</span><button class="delete" data-delg="'+g.id+'">×</button></div>').join('');
   document.querySelectorAll('[data-delr]').forEach(b=>b.onclick=async()=>{
     await updateDoc(doc(fdb,'homes',homeId),{rooms:rooms().filter(r=>r.id!==b.dataset.delr)});
+  });
+  document.querySelectorAll('[data-delg]').forEach(b=>b.onclick=async()=>{
+    await updateDoc(doc(fdb,'homes',homeId),{groups:groups().filter(g=>g.id!==b.dataset.delg)});
   });
 }
 $('addRoom').onclick=async()=>{
@@ -716,13 +789,18 @@ $('addRoom').onclick=async()=>{
   await updateDoc(doc(fdb,'homes',homeId),{rooms:[...rooms(),{id:'r'+Date.now(),name:v}]});
   $('newRoom').value='';
 };
+$('addGroup').onclick=async()=>{
+  const v=$('newGroup').value.trim(); if(!v)return;
+  await updateDoc(doc(fdb,'homes',homeId),{groups:[...groups(),{id:'g'+Date.now(),name:v}]});
+  $('newGroup').value='';
+};
 $('copyCode').onclick=()=>{ navigator.clipboard.writeText(home.code); toast('Code copied'); };
 
 /* ---------- CSV ---------- */
 $('exportBtn').onclick=()=>{
-  const head=['task','room','person','time_of_day','schedule','rotates_yearly'];
+  const head=['task','group','room','person','time_of_day','schedule','rotates_yearly'];
   const rows=tasks.map(t=>[
-    t.name, roomName(t.room),
+    t.name, groupName(t.group), roomName(t.room),
     t.person==='anyone'?'Anyone':((memberByUid(t.person)||{}).name||''),
     t.tod, freqLabel(t), t.rotate?'yes':'no'
   ]);
