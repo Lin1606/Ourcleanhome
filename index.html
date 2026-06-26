@@ -11,12 +11,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#eef6fa; --card:#ffffff; --line:#e2eef4; --line2:#cfe0ea;
-    --ink:#46545c; --muted:#7e909a; --faint:#a9bcc6;
-    --hearth:#8fc3d6; --hearth-bg:#c4dfe5; --hearth-tx:#4f8497;
-    --ember:#e0a878; --ember-bg:#ffe6bb;
+    --bg:#faf8f6; --card:#ffffff; --line:#efebe7; --line2:#e3ded9;
+    --ink:#4d4a48; --muted:#8d8884; --faint:#bab5b0;
+    --hearth:#c4b8c8; --hearth-bg:#efeaf1; --hearth-tx:#7c6f86;
+    --ember:#d6a98a; --ember-bg:#f3e6d4;
     --r:14px;
-    --shadow:0 2px 6px rgba(120,150,170,.08);
+    --shadow:0 2px 8px rgba(150,140,135,.08);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;}
@@ -194,7 +194,12 @@
 <!-- ============ MAIN APP ============ -->
 <div id="appScreen" class="hidden">
   <div class="topbar">
-    <h1 id="screenTitle">Today</h1>
+    <div style="display:flex;flex-direction:column;gap:1px;min-width:0;">
+      <button id="homeSwitch" style="background:none;border:none;padding:0;display:flex;align-items:center;gap:5px;color:var(--muted);font-size:12px;font-weight:600;max-width:180px;">
+        <span id="homeNameLbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Home</span><span style="font-size:10px;">▾</span>
+      </button>
+      <h1 id="screenTitle">Today</h1>
+    </div>
     <div style="display:flex; gap:8px;">
       <button class="iconbtn" id="exportBtn">⤓ CSV</button>
       <button class="iconbtn" id="setupBtn">⚙</button>
@@ -264,6 +269,19 @@
 </div></div>
 
 <!-- setup sheet -->
+<div class="scrim" id="homesScrim"><div class="sheet">
+  <h2>Your homes</h2>
+  <div id="homesList"></div>
+  <div class="field" style="margin-top:14px;"><label>Join another home</label>
+    <div class="row2">
+      <input id="switchJoinCode" placeholder="6-char code" maxlength="6" autocomplete="off" style="text-transform:uppercase;letter-spacing:.15em;">
+      <button class="iconbtn" id="switchJoinBtn" style="flex:0 0 auto;">Join</button>
+    </div>
+  </div>
+  <button class="btn-primary" id="switchCreateBtn" style="margin-top:6px;">Create a new home</button>
+  <button class="btn-ghost" id="closeHomes">Close</button>
+</div></div>
+
 <div class="scrim" id="setupScrim"><div class="sheet">
   <h2>Home setup</h2>
   <div class="field"><label>Invite code — share to add people</label>
@@ -321,12 +339,12 @@ const auth = getAuth(app);
 const fdb = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
-const COLORS=['#F0D9EF','#C4DFE5','#FCDCE1','#CDE9DC','#FFE6BB','#E9ECCE'];
-const ROOM_PALETTE=['#FCDCE1','#F0D9EF','#C4DFE5','#CDE9DC','#FFE6BB','#E9ECCE','#FAD9C8','#D9E4F5'];
-const ROOM_INK={'#FCDCE1':'#b5687d','#F0D9EF':'#9a6aa0','#C4DFE5':'#4f8497','#CDE9DC':'#4f9072','#FFE6BB':'#a9802f','#E9ECCE':'#878a4f','#FAD9C8':'#b07050','#D9E4F5':'#5f72a0'};
+const COLORS=['#f6dfe0','#dbe7e0','#e8e0ee','#f3e6d4','#d9e4ec','#e9e3d4'];
+const ROOM_PALETTE=['#f6dfe0','#e8e0ee','#d9e4ec','#dbe7e0','#f3e6d4','#e9e3d4'];
+const ROOM_INK={'#f6dfe0':'#bb7e85','#e8e0ee':'#8f7ba3','#d9e4ec':'#6f8ba0','#dbe7e0':'#6f9684','#f3e6d4':'#b0936a','#e9e3d4':'#9a9078'};
 function roomColor(id){ const r=rooms().find(x=>x.id===id); return (r&&r.color)?r.color:null; }
-function roomInk(c){ return ROOM_INK[c]||'#9a6aa0'; }
-function personInk(c){ return ROOM_INK[c]||'#9a6aa0'; }
+function roomInk(c){ return ROOM_INK[c]||'#8a8a92'; }
+function personInk(c){ return ROOM_INK[c]||'#8a8a92'; }
 const $ = id => document.getElementById(id);
 function show(id){ ['loadingScreen','authScreen','onboardScreen','appScreen'].forEach(s=>$(s).classList.toggle('hidden', s!==id)); }
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
@@ -342,15 +360,23 @@ $('googleSignIn').onclick = ()=> signInWithPopup(auth, provider).catch(e=>toast(
 $('signOutBtn').onclick = ()=> signOut(auth);
 $('signOutFromOnboard').onclick = ()=> signOut(auth);
 
+let myHomes=[]; // [{id, name}]
 onAuthStateChanged(auth, async (u)=>{
   user=u;
   if(!u){ cleanup(); show('authScreen'); return; }
-  // find a household this user belongs to
-  const q = query(collection(fdb,'homes'), where('memberUids','array-contains', u.uid));
-  const snap = await getDocs(q);
-  if(snap.empty){ show('onboardScreen'); }
-  else { enterHome(snap.docs[0].id); }
+  await refreshMyHomes();
+  if(!myHomes.length){ show('onboardScreen'); return; }
+  // open last-used home if still a member, else the first
+  let last=null; try{ last=localStorage.getItem('lastHome_'+u.uid); }catch(e){}
+  const pick = myHomes.find(h=>h.id===last) || myHomes[0];
+  enterHome(pick.id);
 });
+
+async function refreshMyHomes(){
+  const q = query(collection(fdb,'homes'), where('memberUids','array-contains', user.uid));
+  const snap = await getDocs(q);
+  myHomes = snap.docs.map(d=>({id:d.id, name:(d.data().name||'Home')}));
+}
 
 function cleanup(){ if(unsubTasks)unsubTasks(); if(unsubHome)unsubHome(); unsubTasks=unsubHome=null; homeId=home=null; tasks=[]; }
 
@@ -365,10 +391,11 @@ $('createHomeBtn').onclick = async ()=>{
     name:hn, code, createdAt:serverTimestamp(),
     memberUids:[user.uid],
     members:[{uid:user.uid, name, color:COLORS[0]}],
-    rooms:[{id:'r1',name:'Kitchen',color:'#FFE6BB'},{id:'r2',name:'Bathroom',color:'#C4DFE5'},{id:'r3',name:'Bedroom',color:'#F0D9EF'},{id:'r4',name:'Living room',color:'#CDE9DC'}],
+    rooms:[{id:'r1',name:'Kitchen',color:'#f3e6d4'},{id:'r2',name:'Bathroom',color:'#d9e4ec'},{id:'r3',name:'Bedroom',color:'#e8e0ee'},{id:'r4',name:'Living room',color:'#dbe7e0'}],
     groups:[]
   });
   enterHome(ref.id);
+  await refreshMyHomes();
 };
 
 $('joinHomeBtn').onclick = async ()=>{
@@ -380,20 +407,23 @@ $('joinHomeBtn').onclick = async ()=>{
   if(snap.empty){ toast('No home with that code'); return; }
   const d=snap.docs[0];
   const data=d.data();
-  if(data.memberUids.includes(user.uid)){ enterHome(d.id); return; }
+  if(data.memberUids.includes(user.uid)){ await refreshMyHomes(); enterHome(d.id); return; }
   const color=COLORS[data.members.length%COLORS.length];
   await updateDoc(doc(fdb,'homes',d.id),{
     memberUids: arrayUnion(user.uid),
     members: arrayUnion({uid:user.uid, name, color})
   });
+  await refreshMyHomes();
   enterHome(d.id);
 };
 
 /* ---------- ENTER + LIVE SYNC ---------- */
 function enterHome(id){
+  if(unsubTasks)unsubTasks(); if(unsubHome)unsubHome();
   homeId=id;
+  try{ localStorage.setItem('lastHome_'+user.uid, id); }catch(e){}
   show('appScreen');
-  unsubHome = onSnapshot(doc(fdb,'homes',id), s=>{ home=s.data(); renderPeople(); renderSetup(); render(); });
+  unsubHome = onSnapshot(doc(fdb,'homes',id), s=>{ if(!s.exists())return; home=s.data(); $('homeNameLbl').textContent=home.name||'Home'; renderPeople(); renderSetup(); render(); });
   unsubTasks = onSnapshot(collection(fdb,'homes',id,'tasks'), s=>{
     tasks = s.docs.map(d=>({id:d.id, ...d.data()})); render();
   });
@@ -825,6 +855,71 @@ $('saveTask').onclick=async()=>{
 $('cancelTask').onclick=()=>$('taskScrim').classList.remove('show');
 $('taskScrim').onclick=e=>{ if(e.target===$('taskScrim'))$('taskScrim').classList.remove('show'); };
 
+/* ---------- HOMES (multi-home) ---------- */
+$('homeSwitch').onclick=()=>{ renderHomes(); $('homesScrim').classList.add('show'); };
+$('closeHomes').onclick=()=>$('homesScrim').classList.remove('show');
+$('homesScrim').onclick=e=>{ if(e.target===$('homesScrim'))$('homesScrim').classList.remove('show'); };
+function renderHomes(){
+  $('homesList').innerHTML = myHomes.map(h=>{
+    const cur = h.id===homeId;
+    return '<div style="display:flex;align-items:center;gap:9px;padding:10px 0;border-bottom:0.5px solid var(--line);">'+
+      '<span style="flex:1;font-weight:'+(cur?'700':'500')+';">'+esc(h.name)+(cur?' ·':'')+(cur?' <span style="color:var(--hearth-tx);font-size:12px;">current</span>':'')+'</span>'+
+      (cur?'':'<button class="iconbtn" data-gohome="'+h.id+'">Open</button>')+
+      '<button class="delete" data-leavehome="'+h.id+'" title="Leave">⎋</button>'+
+    '</div>';
+  }).join('') || '<div style="color:var(--faint);font-size:14px;">No homes yet.</div>';
+  document.querySelectorAll('[data-gohome]').forEach(b=>b.onclick=()=>{ $('homesScrim').classList.remove('show'); enterHome(b.dataset.gohome); });
+  document.querySelectorAll('[data-leavehome]').forEach(b=>b.onclick=async()=>{
+    const hid=b.dataset.leavehome;
+    if(!confirm('Leave this home? You can rejoin later with its code.')) return;
+    // remove self from the home's members
+    const ref=doc(fdb,'homes',hid);
+    const snap=await getDoc(ref);
+    if(snap.exists()){
+      const d=snap.data();
+      await updateDoc(ref,{
+        memberUids:(d.memberUids||[]).filter(x=>x!==user.uid),
+        members:(d.members||[]).filter(m=>m.uid!==user.uid)
+      });
+    }
+    await refreshMyHomes();
+    if(hid===homeId){
+      if(myHomes.length){ enterHome(myHomes[0].id); }
+      else { cleanup(); show('onboardScreen'); }
+    }
+    renderHomes();
+    toast('Left home');
+  });
+}
+$('switchJoinBtn').onclick=async()=>{
+  const code=$('switchJoinCode').value.trim().toUpperCase();
+  if(code.length!==6){ toast('Code is 6 characters'); return; }
+  const q=query(collection(fdb,'homes'), where('code','==',code));
+  const snap=await getDocs(q);
+  if(snap.empty){ toast('No home with that code'); return; }
+  const d=snap.docs[0]; const data=d.data();
+  if(!data.memberUids.includes(user.uid)){
+    const myName=(home&&home.members.find(m=>m.uid===user.uid)||{}).name||'Me';
+    const color=COLORS[data.members.length%COLORS.length];
+    await updateDoc(doc(fdb,'homes',d.id),{ memberUids:arrayUnion(user.uid), members:arrayUnion({uid:user.uid,name:myName,color}) });
+  }
+  await refreshMyHomes();
+  $('switchJoinCode').value=''; $('homesScrim').classList.remove('show');
+  enterHome(d.id); toast('Joined');
+};
+$('switchCreateBtn').onclick=async()=>{
+  const hn=prompt('Name for the new home?'); if(!hn) return;
+  const myName=(home&&home.members.find(m=>m.uid===user.uid)||{}).name||'Me';
+  const code=genCode();
+  const ref=await addDoc(collection(fdb,'homes'),{
+    name:hn.trim(), code, createdAt:serverTimestamp(),
+    memberUids:[user.uid], members:[{uid:user.uid,name:myName,color:COLORS[0]}],
+    rooms:[{id:'r1',name:'Kitchen',color:'#f3e6d4'},{id:'r2',name:'Bathroom',color:'#d9e4ec'},{id:'r3',name:'Bedroom',color:'#e8e0ee'},{id:'r4',name:'Living room',color:'#dbe7e0'}],
+    groups:[]
+  });
+  await refreshMyHomes(); $('homesScrim').classList.remove('show'); enterHome(ref.id); toast('Home created');
+};
+
 /* ---------- SETUP ---------- */
 $('setupBtn').onclick=()=>{ renderSetup(); $('setupScrim').classList.add('show'); };
 $('closeSetup').onclick=()=>$('setupScrim').classList.remove('show');
@@ -833,14 +928,14 @@ function renderSetup(){
   if(!home)return;
   $('inviteCode').textContent=home.code;
   $('peopleList').innerHTML=members().map(m=>{
-    const col=m.color||'#C4DFE5';
+    const col=m.color||'#d9e4ec';
     const sw=ROOM_PALETTE.map(c=>'<button class="rsw'+(c===col?' on':'')+'" data-puid="'+m.uid+'" data-color="'+c+'" style="background:'+c+'"></button>').join('');
     return '<div style="padding:8px 0;border-bottom:0.5px solid var(--line);">'+
       '<div style="display:flex;align-items:center;gap:9px;"><span class="dot" style="background:'+col+'"></span><span style="flex:1;">'+esc(m.name)+(m.uid===user.uid?' (you)':'')+'</span></div>'+
       '<div class="rsw-row">'+sw+'</div></div>';
   }).join('');
   $('roomList').innerHTML=rooms().map(r=>{
-    const col=r.color||'#F0D9EF';
+    const col=r.color||'#e8e0ee';
     const swatches=ROOM_PALETTE.map(c=>'<button class="rsw'+(c===col?' on':'')+'" data-roomid="'+r.id+'" data-color="'+c+'" style="background:'+c+'"></button>').join('');
     return '<div style="padding:8px 0;border-bottom:0.5px solid var(--line);">'+
       '<div style="display:flex;align-items:center;gap:9px;"><span class="dot" style="background:'+col+'"></span><span style="flex:1;">'+esc(r.name)+'</span><button class="delete" data-delr="'+r.id+'">×</button></div>'+
