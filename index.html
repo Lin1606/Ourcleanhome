@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<meta name="theme-color" content="#a89b7c">
+<meta name="theme-color" content="#c4dfe5">
 <title>Hearth — shared chores</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏡</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,12 +11,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#f6efe6; --card:#fffdf9; --line:#ece3d6; --line2:#ddd0bd;
-    --ink:#4a443c; --muted:#8c8579; --faint:#b3aa9b;
-    --hearth:#a89b7c; --hearth-bg:#efe9dc; --hearth-tx:#6f6750;
-    --ember:#c9a08a; --ember-bg:#f4e8e0;
-    --r:13px;
-    --shadow:0 1px 2px rgba(120,105,80,.06);
+    --bg:#eef6fa; --card:#ffffff; --line:#e2eef4; --line2:#cfe0ea;
+    --ink:#46545c; --muted:#7e909a; --faint:#a9bcc6;
+    --hearth:#8fc3d6; --hearth-bg:#c4dfe5; --hearth-tx:#4f8497;
+    --ember:#e0a878; --ember-bg:#ffe6bb;
+    --r:14px;
+    --shadow:0 2px 6px rgba(120,150,170,.08);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;}
@@ -125,9 +125,21 @@
   .wtask.wdone{color:var(--faint); text-decoration:line-through;}
   .wdot{width:8px; height:8px; border-radius:50%; flex:0 0 auto;}
   .wempty{font-size:13px; color:var(--faint); text-align:center; padding:14px 0;}
+  .colrow{display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; -webkit-overflow-scrolling:touch;}
+  .colcard{flex:0 0 150px; background:var(--card); border:0.5px solid var(--line); border-radius:14px; padding:10px; min-height:120px; box-shadow:var(--shadow);}
+  .colcard-h{display:flex; align-items:center; gap:7px; font-weight:650; font-size:14px; padding-bottom:9px; border-bottom:0.5px solid var(--line); margin-bottom:8px;}
+  .coltask{display:flex; align-items:center; gap:7px; font-size:13px; padding:8px 9px; border-radius:9px; margin-bottom:5px; line-height:1.25; background:var(--bg);}
+  .coltask:active{filter:brightness(.96);}
+  .coltask.wdone{opacity:.5; text-decoration:line-through;}
+  .coltask-od{box-shadow:inset 0 0 0 1.5px #e0a0a0;}
+  .cdot{width:8px; height:8px; border-radius:50%; flex:0 0 auto;}
+  .cod{color:#c06060; font-weight:700; margin-left:auto; font-size:12px;}
   .overdue-tag{background:#f4e3df; color:#a86b5c; padding:1px 8px; border-radius:999px; font-weight:600;}
   .task.is-overdue .tname{color:#a86b5c;}
   .room-label{display:inline-block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--hearth-tx); background:var(--hearth-bg); padding:2px 7px; border-radius:6px; margin-right:7px; vertical-align:1px;}
+  .rsw-row{display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; padding-left:1px;}
+  .rsw{width:26px; height:26px; border-radius:50%; border:2px solid transparent; cursor:pointer;}
+  .rsw.on{border-color:var(--ink); transform:scale(1.05);}
 
   .toast{position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:11px 18px; border-radius:999px; font-size:14px; z-index:80; opacity:0; transition:.2s; pointer-events:none;}
   .toast.show{opacity:1;}
@@ -271,6 +283,13 @@
       <button class="iconbtn" id="addGroup" style="flex:0 0 auto;">Add</button>
     </div>
   </div>
+  <div class="field"><label>Vacations (no tasks shown these days)</label><div id="vacList"></div>
+    <div class="row2" style="margin-top:8px;">
+      <input id="vacFrom" type="date">
+      <input id="vacTo" type="date">
+    </div>
+    <button class="iconbtn" id="addVac" style="width:100%;justify-content:center;margin-top:8px;">Add vacation</button>
+  </div>
   <button class="btn-ghost" id="signOutBtn" style="color:var(--ember);">Sign out</button>
   <button class="btn-ghost" id="closeSetup">Done</button>
 </div></div>
@@ -302,7 +321,12 @@ const auth = getAuth(app);
 const fdb = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
-const COLORS=['#b3a98a','#a7bcc4','#c9a8a0','#b8b0c8','#a8c0a8','#d0b89c'];
+const COLORS=['#F0D9EF','#C4DFE5','#FCDCE1','#CDE9DC','#FFE6BB','#E9ECCE'];
+const ROOM_PALETTE=['#FCDCE1','#F0D9EF','#C4DFE5','#CDE9DC','#FFE6BB','#E9ECCE','#FAD9C8','#D9E4F5'];
+const ROOM_INK={'#FCDCE1':'#b5687d','#F0D9EF':'#9a6aa0','#C4DFE5':'#4f8497','#CDE9DC':'#4f9072','#FFE6BB':'#a9802f','#E9ECCE':'#878a4f','#FAD9C8':'#b07050','#D9E4F5':'#5f72a0'};
+function roomColor(id){ const r=rooms().find(x=>x.id===id); return (r&&r.color)?r.color:null; }
+function roomInk(c){ return ROOM_INK[c]||'#9a6aa0'; }
+function personInk(c){ return ROOM_INK[c]||'#9a6aa0'; }
 const $ = id => document.getElementById(id);
 function show(id){ ['loadingScreen','authScreen','onboardScreen','appScreen'].forEach(s=>$(s).classList.toggle('hidden', s!==id)); }
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
@@ -341,7 +365,7 @@ $('createHomeBtn').onclick = async ()=>{
     name:hn, code, createdAt:serverTimestamp(),
     memberUids:[user.uid],
     members:[{uid:user.uid, name, color:COLORS[0]}],
-    rooms:[{id:'r1',name:'Kitchen'},{id:'r2',name:'Bathroom'},{id:'r3',name:'Bedroom'},{id:'r4',name:'Living room'}],
+    rooms:[{id:'r1',name:'Kitchen',color:'#FFE6BB'},{id:'r2',name:'Bathroom',color:'#C4DFE5'},{id:'r3',name:'Bedroom',color:'#F0D9EF'},{id:'r4',name:'Living room',color:'#CDE9DC'}],
     groups:[]
   });
   enterHome(ref.id);
@@ -424,6 +448,9 @@ function skipKeysFor(t){ return new Set(Object.keys(t.skip||{}).map(k=>k.split('
 
 /* should task show on date d? carry-over only applies up to TODAY; future days show only the natural schedule. */
 function showState(t,d){
+  // vacation: hide all tasks whose date falls in any vacation range
+  const dYv=ymd(d);
+  if(home&&home.vacations){ for(const v of home.vacations){ if(dYv>=v.from && dYv<=v.to) return {show:false,vacation:true}; } }
   const todayY=ymd(new Date());
   const dY=ymd(d);
   const isFutureOrToday = dY>=todayY;
@@ -470,7 +497,7 @@ function ownerOn(t,d){
 }
 
 /* ---------- UI STATE ---------- */
-let screen='today', activePerson='all', calView='month', calDate=new Date();
+let screen='today', activePerson='all', calView='month', calDate=new Date(), colMode=false;
 
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));
@@ -483,8 +510,15 @@ function renderPeople(){
   const row=$('peopleRow'); if(!home){row.innerHTML='';return;}
   let h='<div class="pill '+(activePerson==='all'?'active':'')+'" data-p="all">Everyone</div>';
   members().forEach(m=> h+='<div class="pill '+(activePerson===m.uid?'active':'')+'" data-p="'+m.uid+'"><span class="dot" style="background:'+m.color+'"></span>'+esc(m.name)+'</div>');
+  // columns toggle only meaningful on Today + Everyone + 2+ people
+  if(screen==='today' && activePerson==='all' && members().length>=2){
+    h+='<div class="pill colpill '+(colMode?'active':'')+'" data-coltoggle="1">'+(colMode?'▦ Columns':'▤ List')+'</div>';
+  }
   row.innerHTML=h;
-  row.querySelectorAll('.pill').forEach(el=>el.onclick=()=>{activePerson=el.dataset.p; render();});
+  row.querySelectorAll('.pill').forEach(el=>el.onclick=()=>{
+    if(el.dataset.coltoggle){ colMode=!colMode; render(); return; }
+    activePerson=el.dataset.p; render();
+  });
 }
 
 function listForDate(d){
@@ -523,8 +557,10 @@ function taskRow(t,d,key,hideCheck){
     : (owner?'<span class="tag"><span class="owner-dot" style="background:'+owner.color+'"></span>'+esc(owner.name)+'</span>':'');
   const odLabel = odd>0 ? ('overdue '+odd+(odd===1?' day':' days')) : 'overdue';
   const overdueTag = overdue?'<span class="tag overdue-tag">'+odLabel+'</span>':'';
-  const roomLbl = roomName(t.room) ? '<span class="room-label">'+esc(roomName(t.room))+'</span>' : '';
-  const face='<div class="task '+(done?'done':'')+(overdue?' is-overdue':'')+'">'+
+  const rc = roomColor(t.room); const rink = rc?roomInk(rc):null;
+  const roomLbl = roomName(t.room) ? '<span class="room-label" style="'+(rc?('background:'+rc+';color:'+rink+';'):'')+'">'+esc(roomName(t.room))+'</span>' : '';
+  const washStyle = rc ? ' style="background:'+rc+'22; border-left:3px solid '+rc+';"' : '';
+  const face='<div class="task '+(done?'done':'')+(overdue?' is-overdue':'')+'"'+washStyle+'>'+
     (hideCheck?'<div style="width:23px"></div>':'<div class="check '+(done?'on':'')+'" data-tid="'+t.id+'" data-key="'+realKey+'">'+(done?'✓':'')+'</div>')+
     '<div class="body"><div class="tname">'+roomLbl+esc(t.name)+'</div><div class="meta">'+
       overdueTag+
@@ -549,7 +585,29 @@ function render(){
 
 function renderToday(){
   $('screenTitle').textContent='Today';
-  const d=new Date(), items=listForDate(d), c=$('content');
+  const d=new Date(), c=$('content');
+  // COLUMNS MODE: each person side by side
+  if(colMode && activePerson==='all' && members().length>=2){
+    let cols='<div class="colrow">';
+    members().forEach(m=>{
+      const mine=listForDate(d).filter(t=>ownerOn(t,d)===m.uid || t.person==='anyone');
+      cols+='<div class="colcard"><div class="colcard-h"><span class="dot" style="background:'+m.color+'"></span>'+esc(m.name)+'</div>';
+      if(!mine.length) cols+='<div class="wempty">all clear 🌿</div>';
+      else mine.forEach(t=>{ const st=t.__s||showState(t,d); const done=!!st.done; const rc=roomColor(t.room);
+        cols+='<div class="coltask'+(done?' wdone':'')+(st.overdue?' coltask-od':'')+'" data-coltid="'+t.id+'" data-colkey="'+(st.key||t.id+'|'+ymd(d))+'" '+(rc?'style="background:'+rc+'33;"':'')+'><span class="cdot" style="background:'+(rc||'#ccc')+'"></span>'+esc(t.name)+(st.overdue?' <span class="cod">!'+(st.overdueDays||'')+'</span>':'')+'</div>';
+      });
+      cols+='</div>';
+    });
+    cols+='</div>';
+    c.innerHTML=cols;
+    c.querySelectorAll('.coltask[data-coltid]').forEach(el=>el.onclick=async()=>{
+      const t=tasks.find(x=>x.id===el.dataset.coltid); const key=el.dataset.colkey; const done=Object.assign({},t.done||{});
+      if(done[key]) delete done[key]; else done[key]=true;
+      await updateDoc(doc(fdb,'homes',homeId,'tasks',t.id),{done});
+    });
+    return;
+  }
+  const items=listForDate(d);
   if(!items.length){ c.innerHTML='<div class="empty">Nothing due today'+(activePerson!=='all'?' for this person':'')+'.<br>Tap + to add a task.</div>'; return; }
   const order=['morning','afternoon','evening','any'], L={morning:'Morning',afternoon:'Afternoon',evening:'Evening',any:'Anytime'};
   let h='';
@@ -774,19 +832,54 @@ $('setupScrim').onclick=e=>{ if(e.target===$('setupScrim'))$('setupScrim').class
 function renderSetup(){
   if(!home)return;
   $('inviteCode').textContent=home.code;
-  $('peopleList').innerHTML=members().map(m=>'<div style="display:flex;align-items:center;gap:9px;padding:7px 0;"><span class="dot" style="background:'+m.color+'"></span><span style="flex:1;">'+esc(m.name)+(m.uid===user.uid?' (you)':'')+'</span></div>').join('');
-  $('roomList').innerHTML=rooms().map(r=>'<div style="display:flex;align-items:center;gap:9px;padding:7px 0;"><span style="flex:1;">'+esc(r.name)+'</span><button class="delete" data-delr="'+r.id+'">×</button></div>').join('');
+  $('peopleList').innerHTML=members().map(m=>{
+    const col=m.color||'#C4DFE5';
+    const sw=ROOM_PALETTE.map(c=>'<button class="rsw'+(c===col?' on':'')+'" data-puid="'+m.uid+'" data-color="'+c+'" style="background:'+c+'"></button>').join('');
+    return '<div style="padding:8px 0;border-bottom:0.5px solid var(--line);">'+
+      '<div style="display:flex;align-items:center;gap:9px;"><span class="dot" style="background:'+col+'"></span><span style="flex:1;">'+esc(m.name)+(m.uid===user.uid?' (you)':'')+'</span></div>'+
+      '<div class="rsw-row">'+sw+'</div></div>';
+  }).join('');
+  $('roomList').innerHTML=rooms().map(r=>{
+    const col=r.color||'#F0D9EF';
+    const swatches=ROOM_PALETTE.map(c=>'<button class="rsw'+(c===col?' on':'')+'" data-roomid="'+r.id+'" data-color="'+c+'" style="background:'+c+'"></button>').join('');
+    return '<div style="padding:8px 0;border-bottom:0.5px solid var(--line);">'+
+      '<div style="display:flex;align-items:center;gap:9px;"><span class="dot" style="background:'+col+'"></span><span style="flex:1;">'+esc(r.name)+'</span><button class="delete" data-delr="'+r.id+'">×</button></div>'+
+      '<div class="rsw-row">'+swatches+'</div></div>';
+  }).join('');
   $('groupList').innerHTML=groups().map(g=>'<div style="display:flex;align-items:center;gap:9px;padding:7px 0;"><span style="flex:1;">'+esc(g.name)+'</span><button class="delete" data-delg="'+g.id+'">×</button></div>').join('');
+  document.querySelectorAll('.rsw[data-puid]').forEach(b=>b.onclick=async()=>{
+    const uid=b.dataset.puid, color=b.dataset.color;
+    await updateDoc(doc(fdb,'homes',homeId),{members:members().map(m=>m.uid===uid?{...m,color}:m)});
+  });
+  document.querySelectorAll('.rsw[data-roomid]').forEach(b=>b.onclick=async()=>{
+    const rid=b.dataset.roomid, color=b.dataset.color;
+    await updateDoc(doc(fdb,'homes',homeId),{rooms:rooms().map(r=>r.id===rid?{...r,color}:r)});
+  });
   document.querySelectorAll('[data-delr]').forEach(b=>b.onclick=async()=>{
     await updateDoc(doc(fdb,'homes',homeId),{rooms:rooms().filter(r=>r.id!==b.dataset.delr)});
   });
   document.querySelectorAll('[data-delg]').forEach(b=>b.onclick=async()=>{
     await updateDoc(doc(fdb,'homes',homeId),{groups:groups().filter(g=>g.id!==b.dataset.delg)});
   });
+  const vacs=(home.vacations||[]);
+  $('vacList').innerHTML = vacs.length? vacs.map((v,i)=>'<div style="display:flex;align-items:center;gap:9px;padding:7px 0;"><span style="flex:1;">'+v.from+' → '+v.to+'</span><button class="delete" data-delv="'+i+'">×</button></div>').join('') : '<div style="font-size:13px;color:var(--faint);padding:4px 0;">None set</div>';
+  document.querySelectorAll('[data-delv]').forEach(b=>b.onclick=async()=>{
+    const idx=Number(b.dataset.delv);
+    await updateDoc(doc(fdb,'homes',homeId),{vacations:vacs.filter((_,i)=>i!==idx)});
+  });
 }
+$('addVac').onclick=async()=>{
+  const from=$('vacFrom').value, to=$('vacTo').value;
+  if(!from||!to){ toast('Pick both dates'); return; }
+  if(to<from){ toast('End must be after start'); return; }
+  const vacs=[...(home.vacations||[]),{from,to}];
+  await updateDoc(doc(fdb,'homes',homeId),{vacations:vacs});
+  $('vacFrom').value=''; $('vacTo').value=''; toast('Vacation added');
+};
 $('addRoom').onclick=async()=>{
   const v=$('newRoom').value.trim(); if(!v)return;
-  await updateDoc(doc(fdb,'homes',homeId),{rooms:[...rooms(),{id:'r'+Date.now(),name:v}]});
+  const color=ROOM_PALETTE[rooms().length%ROOM_PALETTE.length];
+  await updateDoc(doc(fdb,'homes',homeId),{rooms:[...rooms(),{id:'r'+Date.now(),name:v,color}]});
   $('newRoom').value='';
 };
 $('addGroup').onclick=async()=>{
