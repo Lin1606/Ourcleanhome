@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#c4dfe5">
-<title>Hearth — shared chores</title>
+<title>OurHome — shared chores</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏡</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#faf8f6; --card:#ffffff; --line:#efebe7; --line2:#e3ded9;
-    --ink:#4d4a48; --muted:#8d8884; --faint:#bab5b0;
-    --hearth:#c4b8c8; --hearth-bg:#efeaf1; --hearth-tx:#7c6f86;
+    --bg:#ffffff; --card:#ffffff; --line:#eeeeee; --line2:#e2e2e2;
+    --ink:#3f3f44; --muted:#8a8a90; --faint:#b8b8be;
+    --hearth:#bcc6cf; --hearth-bg:#eef1f4; --hearth-tx:#6b6b73;
     --ember:#d6a98a; --ember-bg:#f3e6d4;
     --r:14px;
-    --shadow:0 2px 8px rgba(150,140,135,.08);
+    --shadow:0 1px 3px rgba(0,0,0,.05);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;}
@@ -112,7 +112,9 @@
   .cell{aspect-ratio:1; border:0.5px solid var(--line); border-radius:9px; padding:5px; font-size:12px; position:relative; background:var(--card);}
   .cell.out{opacity:.32;}
   .cell.today{border-color:var(--hearth); border-width:1.5px;}
-  .cell .cnt{position:absolute; bottom:4px; right:5px; background:var(--hearth); color:#fff; font-size:10px; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px;}
+  .cell .cnt{position:absolute; bottom:4px; right:5px; background:var(--hearth); color:var(--ink); font-size:10px; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px;}
+  .cell .rdots{position:absolute; bottom:5px; left:5px; display:flex; gap:2px;}
+  .cell .rdot{width:6px; height:6px; border-radius:50%;}
   .weekrow{display:flex; gap:6px; overflow-x:auto; padding-bottom:6px; -webkit-overflow-scrolling:touch;}
   .weekrow::-webkit-scrollbar{height:6px;} .weekrow::-webkit-scrollbar-thumb{background:var(--line2); border-radius:3px;}
   .weekcol{flex:0 0 132px; background:var(--card); border:0.5px solid var(--line); border-radius:12px; padding:8px; min-height:120px;}
@@ -140,6 +142,7 @@
   .rsw-row{display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; padding-left:1px;}
   .rsw{width:26px; height:26px; border-radius:50%; border:2px solid transparent; cursor:pointer;}
   .rsw.on{border-color:var(--ink); transform:scale(1.05);}
+  .reorder{background:var(--card); border:0.5px solid var(--line2); border-radius:7px; width:30px; height:30px; font-size:14px; color:var(--muted); flex:0 0 auto;}
 
   .toast{position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:11px 18px; border-radius:999px; font-size:14px; z-index:80; opacity:0; transition:.2s; pointer-events:none;}
   .toast.show{opacity:1;}
@@ -159,7 +162,7 @@
 <!-- ============ SIGNED OUT ============ -->
 <div id="authScreen" class="gate hidden">
   <div class="mark">🏡</div>
-  <h1>Hearth</h1>
+  <h1>OurHome</h1>
   <p>Shared chores for your home. Sign in to start, then invite the people you live with.</p>
   <button id="googleSignIn" class="gbtn">
     <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.4 5.4 2.5 13.3l7.8 6.1C12.1 13.2 17.6 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.1 5.3-4.6 7l7.1 5.5c4.2-3.9 6.7-9.6 6.7-16.5z"/><path fill="#FBBC05" d="M10.3 28.5c-.5-1.4-.8-2.9-.8-4.5s.3-3.1.8-4.5l-7.8-6.1C.9 16.5 0 20.1 0 24s.9 7.5 2.5 10.6l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.1-5.5c-2 1.4-4.6 2.2-8.1 2.2-6.4 0-11.9-3.7-13.7-9.4l-7.8 6.1C6.4 42.6 14.6 48 24 48z"/></svg>
@@ -211,8 +214,7 @@
   </div>
 
   <div class="nav">
-    <button data-screen="today" class="active"><span class="ic">◉</span>Today</button>
-    <button data-screen="all"><span class="ic">≣</span>To do</button>
+    <button data-screen="today" class="active"><span class="ic">◉</span>Tasks</button>
     <button data-screen="calendar"><span class="ic">▦</span>Calendar</button>
   </div>
   <button class="fab" id="fab">+</button>
@@ -527,7 +529,7 @@ function ownerOn(t,d){
 }
 
 /* ---------- UI STATE ---------- */
-let screen='today', activePerson='all', calView='month', calDate=new Date(), colMode=false;
+let screen='today', activePerson='all', calView='month', calDate=new Date(), colMode=false, sortMode='group';
 
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));
@@ -608,28 +610,44 @@ function taskRow(t,d,key,hideCheck){
 function render(){
   if(!home) return;
   renderPeople();
-  if(screen==='today') renderToday();
-  else if(screen==='all') renderAll();
+  if(screen==='today') renderTasks();
   else renderCalendar();
 }
 
-function renderToday(){
-  $('screenTitle').textContent='Today';
+function renderTasks(){
+  $('screenTitle').textContent='Tasks';
   const d=new Date(), c=$('content');
-  // COLUMNS MODE: each person side by side
+  // gather everything that needs doing today (due or overdue, undone)
+  let items=[];
+  tasks.forEach(t=>{
+    const s=showState(t,d);
+    if(!s.show || s.done) return;
+    if(activePerson!=='all' && !(ownerOn(t,d)===activePerson || t.person==='anyone')) return;
+    t.__s=s; items.push(t);
+  });
+
+  // sort switcher + columns toggle row
+  let h='<div class="viewseg">'+
+    '<button data-sort="group" class="'+(sortMode==='group'?'on':'')+'">Group</button>'+
+    '<button data-sort="time" class="'+(sortMode==='time'?'on':'')+'">Time</button>'+
+    '<button data-sort="room" class="'+(sortMode==='room'?'on':'')+'">Room</button>'+
+  '</div>';
+
+  // columns mode (per person) overrides grouping
   if(colMode && activePerson==='all' && members().length>=2){
-    let cols='<div class="colrow">';
+    h+='<div class="colrow">';
     members().forEach(m=>{
-      const mine=listForDate(d).filter(t=>ownerOn(t,d)===m.uid || t.person==='anyone');
-      cols+='<div class="colcard"><div class="colcard-h"><span class="dot" style="background:'+m.color+'"></span>'+esc(m.name)+'</div>';
-      if(!mine.length) cols+='<div class="wempty">all clear 🌿</div>';
-      else mine.forEach(t=>{ const st=t.__s||showState(t,d); const done=!!st.done; const rc=roomColor(t.room);
-        cols+='<div class="coltask'+(done?' wdone':'')+(st.overdue?' coltask-od':'')+'" data-coltid="'+t.id+'" data-colkey="'+(st.key||t.id+'|'+ymd(d))+'" '+(rc?'style="background:'+rc+'33;"':'')+'><span class="cdot" style="background:'+(rc||'#ccc')+'"></span>'+esc(t.name)+(st.overdue?' <span class="cod">!'+(st.overdueDays||'')+'</span>':'')+'</div>';
+      const mine=items.filter(t=>ownerOn(t,d)===m.uid || t.person==='anyone');
+      h+='<div class="colcard"><div class="colcard-h"><span class="dot" style="background:'+m.color+'"></span>'+esc(m.name)+'</div>';
+      if(!mine.length) h+='<div class="wempty">all clear 🌿</div>';
+      else mine.forEach(t=>{ const st=t.__s; const rc=roomColor(t.room);
+        h+='<div class="coltask'+(st.overdue?' coltask-od':'')+'" data-coltid="'+t.id+'" data-colkey="'+(st.key||t.id+'|'+ymd(d))+'" '+(rc?'style="background:'+rc+'33;"':'')+'><span class="cdot" style="background:'+(rc||'#ccc')+'"></span>'+esc(t.name)+(st.overdue?' <span class="cod">!'+(st.overdueDays||'')+'</span>':'')+'</div>';
       });
-      cols+='</div>';
+      h+='</div>';
     });
-    cols+='</div>';
-    c.innerHTML=cols;
+    h+='</div>';
+    c.innerHTML=h;
+    bindSort(c);
     c.querySelectorAll('.coltask[data-coltid]').forEach(el=>el.onclick=async()=>{
       const t=tasks.find(x=>x.id===el.dataset.coltid); const key=el.dataset.colkey; const done=Object.assign({},t.done||{});
       if(done[key]) delete done[key]; else done[key]=true;
@@ -637,41 +655,34 @@ function renderToday(){
     });
     return;
   }
-  const items=listForDate(d);
-  if(!items.length){ c.innerHTML='<div class="empty">Nothing due today'+(activePerson!=='all'?' for this person':'')+'.<br>Tap + to add a task.</div>'; return; }
-  const order=['morning','afternoon','evening','any'], L={morning:'Morning',afternoon:'Afternoon',evening:'Evening',any:'Anytime'};
-  let h='';
-  order.forEach(s=>{ const it=items.filter(t=>t.tod===s); if(!it.length)return;
-    h+='<div class="card"><div class="card-h"><span class="lbl">'+L[s]+'</span></div>';
-    it.forEach(t=>h+=taskRow(t,d,t.id+'|'+ymd(d),false)); h+='</div>'; });
-  c.innerHTML=h; bind();
-}
-function renderAll(){
-  $('screenTitle').textContent='To do';
-  const c=$('content'); const today=new Date();
-  // only tasks that need doing now: showing today, not done, (due or overdue)
-  let items=[];
-  tasks.forEach(t=>{
-    const s=showState(t,today);
-    if(!s.show || s.done) return;
-    if(activePerson!=='all' && !(ownerOn(t,today)===activePerson || t.person==='anyone')) return;
-    t.__s=s; items.push(t);
-  });
-  if(!items.length){ c.innerHTML='<div class="empty">Nothing to do right now. 🌿<br>Enjoy the quiet.</div>'; return; }
-  // group by group name (tasks with no group go under "Other")
-  const byGroup={};
-  items.forEach(t=>{ const k=t.group||'__none__'; (byGroup[k]=byGroup[k]||[]).push(t); });
-  // order: real groups first (in home.groups order), then Other
-  const order=[...groups().map(g=>g.id), '__none__'];
-  let h='';
-  order.forEach(gid=>{
-    const list=byGroup[gid]; if(!list||!list.length) return;
-    const title = gid==='__none__' ? 'Other' : groupName(gid);
-    h+='<div class="card"><div class="card-h"><span class="lbl">'+esc(title)+'</span></div>';
-    list.forEach(t=>h+=taskRow(t,today,t.__s.key,false));
+
+  if(!items.length){
+    h+='<div class="empty">Nothing to do right now 🌿<br>Enjoy the quiet.</div>';
+    c.innerHTML=h; bindSort(c); return;
+  }
+
+  // build sections based on sortMode
+  let sections=[]; // {title, list}
+  if(sortMode==='group'){
+    const by={}; items.forEach(t=>{ const k=t.group||'__none__'; (by[k]=by[k]||[]).push(t); });
+    [...groups().map(g=>g.id),'__none__'].forEach(gid=>{ if(by[gid]) sections.push({title: gid==='__none__'?'Other':groupName(gid), list:by[gid]}); });
+  } else if(sortMode==='time'){
+    const by={}; items.forEach(t=>{ (by[t.tod||'any']=by[t.tod||'any']||[]).push(t); });
+    [['morning','Morning'],['afternoon','Afternoon'],['evening','Evening'],['any','Anytime']].forEach(([k,lbl])=>{ if(by[k]) sections.push({title:lbl, list:by[k]}); });
+  } else { // room
+    const by={}; items.forEach(t=>{ const k=t.room||'__none__'; (by[k]=by[k]||[]).push(t); });
+    [...rooms().map(r=>r.id),'__none__'].forEach(rid=>{ if(by[rid]) sections.push({title: rid==='__none__'?'No room':roomName(rid), list:by[rid]}); });
+  }
+
+  sections.forEach(sec=>{
+    h+='<div class="card"><div class="card-h"><span class="lbl">'+esc(sec.title)+'</span></div>';
+    sec.list.forEach(t=>h+=taskRow(t,d,t.__s.key,false));
     h+='</div>';
   });
-  c.innerHTML=h; bind();
+  c.innerHTML=h; bindSort(c); bind();
+}
+function bindSort(c){
+  c.querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{ sortMode=b.dataset.sort; render(); });
 }
 function renderCalendar(){
   $('screenTitle').textContent='Calendar';
@@ -697,8 +708,15 @@ function monthHTML(){
   ['Mo','Tu','We','Th','Fr','Sa','Su'].forEach(x=>h+='<div class="dow">'+x+'</div>');
   const today=new Date();
   for(let i=0;i<42;i++){ const d=new Date(start); d.setDate(start.getDate()+i);
-    const out=d.getMonth()!==m, cnt=listForDate(d).length;
-    h+='<div class="cell '+(out?'out':'')+' '+(sameYMD(d,today)?'today':'')+'" data-d="'+d.toISOString()+'"><span>'+d.getDate()+'</span>'+(cnt?'<span class="cnt">'+cnt+'</span>':'')+'</div>'; }
+    const out=d.getMonth()!==m;
+    const dayTasks=listForDate(d);
+    const cnt=dayTasks.length;
+    // unique room colors present that day
+    const rcols=[...new Set(dayTasks.map(t=>roomColor(t.room)).filter(Boolean))].slice(0,4);
+    let dots=rcols.map(c=>'<span class="rdot" style="background:'+c+'"></span>').join('');
+    h+='<div class="cell '+(out?'out':'')+' '+(sameYMD(d,today)?'today':'')+'" data-d="'+d.toISOString()+'"><span>'+d.getDate()+'</span>'+
+       (dots?'<span class="rdots">'+dots+'</span>':'')+
+       (cnt?'<span class="cnt">'+cnt+'</span>':'')+'</div>'; }
   return h+'</div>';
 }
 function weekHTML(){
@@ -934,14 +952,18 @@ function renderSetup(){
       '<div style="display:flex;align-items:center;gap:9px;"><span class="dot" style="background:'+col+'"></span><span style="flex:1;">'+esc(m.name)+(m.uid===user.uid?' (you)':'')+'</span></div>'+
       '<div class="rsw-row">'+sw+'</div></div>';
   }).join('');
-  $('roomList').innerHTML=rooms().map(r=>{
+  $('roomList').innerHTML=rooms().map((r,idx)=>{
     const col=r.color||'#e8e0ee';
     const swatches=ROOM_PALETTE.map(c=>'<button class="rsw'+(c===col?' on':'')+'" data-roomid="'+r.id+'" data-color="'+c+'" style="background:'+c+'"></button>').join('');
+    const upBtn = idx>0 ? '<button class="reorder" data-roomup="'+idx+'">↑</button>' : '<span class="reorder" style="visibility:hidden;">↑</span>';
+    const dnBtn = idx<rooms().length-1 ? '<button class="reorder" data-roomdn="'+idx+'">↓</button>' : '<span class="reorder" style="visibility:hidden;">↓</span>';
     return '<div style="padding:8px 0;border-bottom:0.5px solid var(--line);">'+
-      '<div style="display:flex;align-items:center;gap:9px;"><span class="dot" style="background:'+col+'"></span><span style="flex:1;">'+esc(r.name)+'</span><button class="delete" data-delr="'+r.id+'">×</button></div>'+
+      '<div style="display:flex;align-items:center;gap:6px;"><span class="dot" style="background:'+col+'"></span><span style="flex:1;">'+esc(r.name)+'</span>'+upBtn+dnBtn+'<button class="delete" data-delr="'+r.id+'">×</button></div>'+
       '<div class="rsw-row">'+swatches+'</div></div>';
   }).join('');
   $('groupList').innerHTML=groups().map(g=>'<div style="display:flex;align-items:center;gap:9px;padding:7px 0;"><span style="flex:1;">'+esc(g.name)+'</span><button class="delete" data-delg="'+g.id+'">×</button></div>').join('');
+  document.querySelectorAll('[data-roomup]').forEach(b=>b.onclick=async()=>{ const i=Number(b.dataset.roomup); const rs=[...rooms()]; [rs[i-1],rs[i]]=[rs[i],rs[i-1]]; await updateDoc(doc(fdb,'homes',homeId),{rooms:rs}); });
+  document.querySelectorAll('[data-roomdn]').forEach(b=>b.onclick=async()=>{ const i=Number(b.dataset.roomdn); const rs=[...rooms()]; [rs[i+1],rs[i]]=[rs[i],rs[i+1]]; await updateDoc(doc(fdb,'homes',homeId),{rooms:rs}); });
   document.querySelectorAll('.rsw[data-puid]').forEach(b=>b.onclick=async()=>{
     const uid=b.dataset.puid, color=b.dataset.color;
     await updateDoc(doc(fdb,'homes',homeId),{members:members().map(m=>m.uid===uid?{...m,color}:m)});
